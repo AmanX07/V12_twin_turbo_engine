@@ -1,0 +1,1131 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>3D 6.5L V12 Twin-Turbo Engine — Ignition & Kinematic Visualizer</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #090b10;
+      color: #f1f5f9;
+      overflow-x: hidden;
+    }
+    .mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+    input[type="range"] {
+      accent-color: #f97316;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col bg-slate-950 text-slate-100 select-none">
+
+  <!-- Top Header Bar -->
+  <header class="w-full bg-slate-900/90 border-b border-slate-800 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 z-20">
+    <div class="flex items-center gap-3">
+      <div id="statusDot" class="w-3 h-3 rounded-full bg-emerald-400 shadow-[0_0_12px_#34d399] animate-pulse"></div>
+      <div>
+        <h1 class="text-sm sm:text-base font-bold tracking-tight text-white flex items-center gap-2">
+          6.5L 60° V12 TWIN-TURBO
+          <span class="text-[11px] font-semibold uppercase px-2 py-0.5 rounded bg-orange-500/20 text-orange-300 border border-orange-500/40">3D Ignition &amp; Kinematics</span>
+        </h1>
+        <p id="phaseBanner" class="text-xs text-amber-300 mono">PHASE: CINEMATIC AUTO-DEMO (CRANKING → IGNITION → FULL BOOST)</p>
+      </div>
+    </div>
+
+    <!-- Primary Action Toolbar -->
+    <div class="flex flex-wrap items-center gap-2">
+      <button id="btnAutoTour" type="button" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500 text-slate-950 hover:bg-amber-400 transition shadow">
+        🎬 Auto Video Tour: ON
+      </button>
+      <button id="btnIgnition" type="button" class="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition shadow">
+        ⚡ Re-Trigger Ignition
+      </button>
+      <button id="btnRevThrottle" type="button" class="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-orange-600 hover:bg-orange-500 active:scale-95 text-white transition shadow">
+        🔥 Hold for Full Boost (WOT)
+      </button>
+      <button id="btnAudio" type="button" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+        🔇 Sound: Muted (Click to Enable)
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Workspace Container -->
+  <main class="flex-1 grid grid-cols-1 lg:grid-cols-12 relative overflow-hidden">
+
+    <!-- 3D Viewport Area (8 cols on desktop) -->
+    <section class="lg:col-span-8 relative min-h-[420px] sm:min-h-[520px] lg:min-h-0 bg-gradient-to-b from-slate-900 via-slate-950 to-black flex flex-col justify-between">
+      <div id="canvasContainer" class="absolute inset-0 w-full h-full cursor-grab active:cursor-grabbing"></div>
+
+      <!-- Floating Top-Left HUD Overlay -->
+      <div class="relative z-10 p-3 sm:p-4 pointer-events-none flex flex-wrap justify-between items-start gap-2">
+        <div class="bg-slate-900/80 backdrop-blur-md border border-slate-800/90 rounded-xl p-3 shadow-lg max-w-xs">
+          <div class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">Firing Order (Even-Fire 60° V12)</div>
+          <div class="text-xs sm:text-sm font-bold text-orange-400 mono mt-0.5">1-7-5-11-3-9-6-12-2-8-4-10</div>
+          <div class="mt-2 flex items-center gap-3 text-[11px] text-slate-300">
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-red-500 inline-block"></span>Power/Spark</span>
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-sky-400 inline-block"></span>Intake</span>
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-amber-400 inline-block"></span>Comp</span>
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-purple-400 inline-block"></span>Exhaust</span>
+          </div>
+        </div>
+
+        <!-- Live Big Tachometer Badge -->
+        <div class="bg-slate-900/85 backdrop-blur-md border border-slate-800 rounded-xl px-4 py-2.5 text-right shadow-lg">
+          <div class="text-[10px] uppercase tracking-widest text-slate-400">Crankshaft Speed</div>
+          <div class="text-2xl sm:text-3xl font-extrabold mono text-white"><span id="hudRpm">0</span> <span class="text-xs font-normal text-slate-400">RPM</span></div>
+          <div class="text-xs mono text-cyan-400">BOOST: <span id="hudBoost">+0.00</span> BAR</div>
+        </div>
+      </div>
+
+      <!-- Floating Bottom Camera & Timeline Controls -->
+      <div class="relative z-10 p-3 sm:p-4 bg-gradient-to-t from-slate-950/95 via-slate-950/70 to-transparent flex flex-col gap-2.5">
+        <!-- Cinematic Timeline Scrubber -->
+        <div class="flex items-center gap-3 bg-slate-900/85 border border-slate-800/90 rounded-xl px-3 py-2">
+          <span class="text-[11px] font-semibold text-slate-300 mono whitespace-nowrap" id="timelineLabel">00.0s / 14.0s</span>
+          <input id="timelineSlider" type="range" min="0" max="14" step="0.05" value="0" class="w-full h-1.5 bg-slate-700 rounded-lg cursor-pointer" />
+          <span id="stageTag" class="text-[11px] px-2 py-0.5 rounded bg-orange-500/20 text-orange-300 mono whitespace-nowrap">IGNITION CYCLE</span>
+        </div>
+
+        <!-- Camera Angle Presets & Cutaway Toggles -->
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="flex flex-wrap items-center gap-1.5">
+            <span class="text-[11px] text-slate-400 mr-1 font-medium">Camera:</span>
+            <button id="camOrbit" type="button" class="px-2.5 py-1 rounded text-xs font-medium bg-orange-600 text-white transition">Auto Orbit</button>
+            <button id="camFront" type="button" class="px-2.5 py-1 rounded text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 transition">Twin Turbos (Front)</button>
+            <button id="camSide" type="button" class="px-2.5 py-1 rounded text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 transition">Piston Cutaway (Side)</button>
+            <button id="camTop" type="button" class="px-2.5 py-1 rounded text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 transition">Top V-Banks</button>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-1.5">
+            <button id="btnXray" type="button" class="px-2.5 py-1 rounded text-xs font-medium bg-cyan-600/30 border border-cyan-500/50 text-cyan-200 hover:bg-cyan-600/50 transition">
+              🔍 X-Ray Block: ON
+            </button>
+            <button id="btnSlowMo" type="button" class="px-2.5 py-1 rounded text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+              ⏱️ Speed: 1.0x
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right Telemetry & Interactive Engineering Control Panel (4 cols on desktop) -->
+    <aside class="lg:col-span-4 bg-slate-900 border-t lg:border-t-0 lg:border-l border-slate-800 p-4 flex flex-col justify-between gap-4 overflow-y-auto max-h-full">
+
+      <div class="space-y-4">
+        <!-- Manual Throttle & Engine State Box -->
+        <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-3.5 space-y-3">
+          <div class="flex items-center justify-between">
+            <h2 class="text-xs font-bold uppercase tracking-wider text-slate-300">Manual Throttle &amp; Boost Control</h2>
+            <span id="engineStateBadge" class="text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 mono">RUNNING</span>
+          </div>
+
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-400">Target Engine RPM</span>
+              <span id="sliderRpmLabel" class="mono font-bold text-orange-400">Auto Sequence</span>
+            </div>
+            <input id="rpmSlider" type="range" min="0" max="8500" step="50" value="1100" class="w-full h-2 bg-slate-800 rounded-lg cursor-pointer" />
+            <div class="flex justify-between text-[10px] text-slate-500 mono mt-1">
+              <span>0 (OFF)</span>
+              <span>280 (CRANK)</span>
+              <span>1100 (IDLE)</span>
+              <span>5000 (SPOOL)</span>
+              <span>8500 (REDLINE)</span>
+            </div>
+          </div>
+
+          <!-- 4 Key Engineering Gauges -->
+          <div class="grid grid-cols-2 gap-2.5 pt-1">
+            <div class="bg-slate-900 border border-slate-800/80 rounded-lg p-2.5">
+              <div class="text-[10px] text-slate-400 uppercase">Twin-Turbo Speed</div>
+              <div class="text-sm font-bold text-cyan-300 mono mt-0.5"><span id="gaugeTurboRpm">0</span> RPM</div>
+              <div class="w-full bg-slate-800 h-1.5 rounded-full mt-1.5 overflow-hidden">
+                <div id="barTurbo" class="bg-cyan-400 h-full transition-all duration-75" style="width: 10%"></div>
+              </div>
+            </div>
+
+            <div class="bg-slate-900 border border-slate-800/80 rounded-lg p-2.5">
+              <div class="text-[10px] text-slate-400 uppercase">Exhaust Temp (EGT)</div>
+              <div class="text-sm font-bold text-orange-400 mono mt-0.5"><span id="gaugeEgt">25</span> °C</div>
+              <div class="w-full bg-slate-800 h-1.5 rounded-full mt-1.5 overflow-hidden">
+                <div id="barEgt" class="bg-gradient-to-r from-amber-400 to-red-500 h-full transition-all duration-75" style="width: 5%"></div>
+              </div>
+            </div>
+
+            <div class="bg-slate-900 border border-slate-800/80 rounded-lg p-2.5">
+              <div class="text-[10px] text-slate-400 uppercase">Brake Horsepower</div>
+              <div class="text-sm font-bold text-emerald-400 mono mt-0.5"><span id="gaugeHp">0</span> HP</div>
+            </div>
+
+            <div class="bg-slate-900 border border-slate-800/80 rounded-lg p-2.5">
+              <div class="text-[10px] text-slate-400 uppercase">Crankshaft Torque</div>
+              <div class="text-sm font-bold text-amber-300 mono mt-0.5"><span id="gaugeNm">0</span> Nm</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live 12-Cylinder 4-Stroke Matrix -->
+        <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-3.5">
+          <div class="flex items-center justify-between mb-2">
+            <h2 class="text-xs font-bold uppercase tracking-wider text-slate-300">Live 12-Cylinder 4-Stroke Matrix</h2>
+            <span class="text-[10px] text-slate-400 mono">60° Crank Interval</span>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2 text-xs mono" id="cylinderMatrix">
+            <!-- Populated dynamically with Cylinders 1..6 (Bank A) and 7..12 (Bank B) -->
+          </div>
+        </div>
+
+        <!-- Ignition & Running Process Breakdown -->
+        <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-3.5 space-y-2 text-xs text-slate-300">
+          <h3 class="font-bold uppercase tracking-wider text-slate-200 text-[11px]">How the V12 Twin-Turbo Ignites &amp; Runs</h3>
+          <p><strong class="text-amber-300">1. Starter Cranking (280 RPM):</strong> Rear high-torque starter engages the flywheel ring gear, turning the 6-throw crankshaft while direct injectors prime the cylinders.</p>
+          <p><strong class="text-red-400">2. Sequential Spark Ignition:</strong> Coils fire every 60° of crank rotation (<span class="mono text-orange-300">1-7-5-11-3-9-6-12-2-8-4-10</span>), producing a balanced cold-start flare to 2,600 RPM before settling to a 1,100 RPM idle.</p>
+          <p><strong class="text-cyan-300">3. Twin-Turbo Spool (+1.65 Bar):</strong> High-enthalpy exhaust gases spin both front-mounted turbines up to 145,000 RPM, compressing intake air through the top charge pipes into the V12 plenums.</p>
+        </div>
+      </div>
+
+      <div class="text-[11px] text-slate-500 flex items-center justify-between pt-2 border-t border-slate-800/80">
+        <span>Drag 3D viewport to orbit • Scroll to zoom</span>
+        <span id="fpsCounter" class="mono">60 FPS</span>
+      </div>
+    </aside>
+  </main>
+
+  <script>
+    // =========================================================================
+    // 1. V12 ENGINE CONSTANTS & TELEMETRY STATE
+    // =========================================================================
+    const FIRING_ORDER = [1, 7, 5, 11, 3, 9, 6, 12, 2, 8, 4, 10];
+    const FIRE_OFFSET = {};
+    FIRING_ORDER.forEach((cyl, idx) => {
+      FIRE_OFFSET[cyl] = idx * 60.0; // Every 60 deg of 720-deg 4-stroke cycle
+    });
+
+    const state = {
+      autoTour: true,
+      tourTime: 0.0,
+      tourDuration: 14.0,
+      rpm: 0.0,
+      targetRpm: 1100.0,
+      boostBar: 0.0,
+      egt: 25.0,
+      ignitionOn: false,
+      cranking: false,
+      holdingWot: false,
+      xray: true,
+      simSpeed: 1.0,
+      crankDeg: 0.0,
+      turboAngle: 0.0,
+      camMode: 'orbit',
+      camYaw: -0.55,
+      camPitch: 0.32,
+      camDist: 13.5,
+      audioEnabled: false,
+      bovTimer: 0.0
+    };
+
+    // Build the 12-Cylinder UI cards once
+    const matrixEl = document.getElementById('cylinderMatrix');
+    const cylCards = {};
+    for (let i = 0; i < 6; i++) {
+      const leftId = i + 1;
+      const rightId = i + 7;
+      [leftId, rightId].forEach((cid) => {
+        const div = document.createElement('div');
+        div.className = 'flex items-center justify-between px-2.5 py-1.5 rounded bg-slate-900 border border-slate-800 transition-colors';
+        div.innerHTML = `
+          <span class="font-bold text-slate-200">CYL ${String(cid).padStart(2, '0')}</span>
+          <span id="cylBadge-${cid}" class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">STANDBY</span>
+        `;
+        matrixEl.appendChild(div);
+        cylCards[cid] = {
+          card: div,
+          badge: div.querySelector(`#cylBadge-${cid}`)
+        };
+      });
+    }
+
+    // =========================================================================
+    // 2. THREE.JS 3D ENGINE SCENE SETUP
+    // =========================================================================
+    const container = document.getElementById('canvasContainer');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x090c12);
+    scene.fog = new THREE.FogExp2(0x090c12, 0.025);
+
+    const camera = new THREE.PerspectiveCamera(42, 16 / 9, 0.1, 100);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.shadowMap.enabled = true;
+    container.appendChild(renderer.domElement);
+
+    // Studio Lighting
+    const ambientLight = new THREE.AmbientLight(0x94a3b8, 0.65);
+    scene.add(ambientLight);
+
+    const keyLight = new THREE.DirectionalLight(0xffffff, 1.15);
+    keyLight.position.set(8, 14, 10);
+    scene.add(keyLight);
+
+    const rimLight = new THREE.DirectionalLight(0x38bdf8, 0.55);
+    rimLight.position.set(-10, 6, -10);
+    scene.add(rimLight);
+
+    const underLight = new THREE.DirectionalLight(0xf97316, 0.35);
+    underLight.position.set(0, -10, 5);
+    scene.add(underLight);
+
+    // Studio Grid Floor
+    const gridHelper = new THREE.GridHelper(22, 22, 0x334155, 0x1e293b);
+    gridHelper.position.y = -2.65;
+    scene.add(gridHelper);
+
+    // Master Engine Group
+    const engineGroup = new THREE.Group();
+    scene.add(engineGroup);
+
+    // Materials
+    const matCrankcase = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.75, roughness: 0.35 });
+    const matBlockXray = new THREE.MeshPhysicalMaterial({
+      color: 0x64748b,
+      metalness: 0.25,
+      roughness: 0.2,
+      transparent: true,
+      opacity: 0.28,
+      depthWrite: false,
+      side: THREE.DoubleSide
+    });
+    const matValveCover = new THREE.MeshStandardMaterial({ color: 0xdc2626, metalness: 0.55, roughness: 0.25 });
+    const matCrankSteel = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, metalness: 0.9, roughness: 0.18 });
+    const matTitaniumRod = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.85, roughness: 0.22 });
+    const matPiston = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.88, roughness: 0.15 });
+    const matCompressor = new THREE.MeshStandardMaterial({ color: 0xdbeafe, metalness: 0.85, roughness: 0.18 });
+    const matCarbonPlenum = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.45, roughness: 0.35 });
+    const matChargePipe = new THREE.MeshStandardMaterial({ color: 0x38bdf8, metalness: 0.8, roughness: 0.2 });
+
+    // Dynamic thermal material for Exhaust Manifolds & Hot-Side Turbines
+    const matExhaustHot = new THREE.MeshStandardMaterial({
+      color: 0x475569,
+      emissive: 0x000000,
+      emissiveIntensity: 0.0,
+      metalness: 0.7,
+      roughness: 0.35
+    });
+
+    // Starter Motor Material (glows during cranking)
+    const matStarter = new THREE.MeshStandardMaterial({
+      color: 0x334155,
+      emissive: 0x0ea5e9,
+      emissiveIntensity: 0.0,
+      metalness: 0.65,
+      roughness: 0.3
+    });
+
+    // 1. Lower Crankcase Bedplate
+    const bedplate = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.85, 7.2), matCrankcase);
+    bedplate.position.set(0, -1.65, 0);
+    engineGroup.add(bedplate);
+
+    // 2. Left & Right 60-Deg V-Bank Cylinder Blocks & Crimson Valve Covers
+    const BANK_ANGLE = THREE.MathUtils.degToRad(30.0);
+    const blockMeshes = [];
+
+    [1, -1].forEach((sign) => {
+      const bankGroup = new THREE.Group();
+      bankGroup.position.set(0, -1.15, 0);
+      bankGroup.rotation.z = sign * BANK_ANGLE;
+
+      // Translucent Cylinder Bank Block
+      const bankBlock = new THREE.Mesh(new THREE.BoxGeometry(1.38, 2.35, 6.75), matBlockXray);
+      bankBlock.position.set(0, 1.48, 0);
+      bankGroup.add(bankBlock);
+      blockMeshes.push(bankBlock);
+
+      // Anodized Red DOHC Valve Cover
+      const valveCover = new THREE.Mesh(new THREE.BoxGeometry(1.44, 0.32, 6.85), matValveCover);
+      valveCover.position.set(0, 2.82, 0);
+      bankGroup.add(valveCover);
+
+      // Top Twin-Plenum Carbon Intake Manifold Runner
+      const plenum = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 6.4, 16), matCarbonPlenum);
+      plenum.rotation.x = Math.PI / 2;
+      plenum.position.set(-sign * 0.45, 3.12, 0);
+      bankGroup.add(plenum);
+
+      engineGroup.add(bankGroup);
+    });
+
+    // 3. Crankshaft & Flywheel Assembly
+    const CRANK_Y = -1.15;
+    const CRANK_R = 0.44;
+    const ROD_LEN = 1.42;
+
+    const crankGroup = new THREE.Group();
+    crankGroup.position.set(0, CRANK_Y, 0);
+    engineGroup.add(crankGroup);
+
+    const mainShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 7.5, 16), matCrankSteel);
+    mainShaft.rotation.x = Math.PI / 2;
+    crankGroup.add(mainShaft);
+
+    // Rear Flywheel & Starter Ring Gear
+    const flywheel = new THREE.Mesh(new THREE.CylinderGeometry(1.12, 1.12, 0.28, 32), matCrankSteel);
+    flywheel.rotation.x = Math.PI / 2;
+    flywheel.position.set(0, 0, -3.72);
+    crankGroup.add(flywheel);
+
+    // High-Torque Starter Motor on Rear Side
+    const starterMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 1.25, 16), matStarter);
+    starterMesh.rotation.x = Math.PI / 2;
+    starterMesh.position.set(1.18, CRANK_Y - 0.35, -3.15);
+    engineGroup.add(starterMesh);
+
+    // 4. 12 Cylinders: Pistons, Connecting Rods, Valves, Spark/Combustion Chambers & Exhaust Runners
+    const zPositions = [-2.65, -1.59, -0.53, 0.53, 1.59, 2.65];
+    const cylinders = [];
+
+    const pistonGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.46, 20);
+    const rodGeo = new THREE.BoxGeometry(0.14, ROD_LEN, 0.10);
+    const flameGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.44, 16);
+    const sparkGeo = new THREE.SphereGeometry(0.16, 12, 12);
+
+    for (let idx = 0; idx < 6; idx++) {
+      const zc = zPositions[idx];
+      const pair = [
+        { cylId: idx + 1, bankSign: 1, zOff: -0.11 },
+        { cylId: idx + 7, bankSign: -1, zOff: 0.11 }
+      ];
+
+      pair.forEach(({ cylId, bankSign, zOff }) => {
+        const bAng = bankSign * BANK_ANGLE;
+        const ux = -Math.sin(bAng);
+        const uy = Math.cos(bAng);
+        const wz = zc + zOff;
+
+        // Piston Mesh
+        const piston = new THREE.Mesh(pistonGeo, matPiston);
+        piston.rotation.z = bAng;
+        engineGroup.add(piston);
+
+        // Connecting Rod Mesh
+        const rod = new THREE.Mesh(rodGeo, matTitaniumRod);
+        engineGroup.add(rod);
+
+        // Crankpin Web
+        const pinMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.22, 12), matCrankSteel);
+        pinMesh.rotation.x = Math.PI / 2;
+        engineGroup.add(pinMesh);
+
+        // Combustion Flame / Intake Charge Cylinder Volume
+        const flameMat = new THREE.MeshBasicMaterial({
+          color: 0xff6600,
+          transparent: true,
+          opacity: 0.0,
+          depthWrite: false
+        });
+        const flameMesh = new THREE.Mesh(flameGeo, flameMat);
+        flameMesh.rotation.z = bAng;
+        engineGroup.add(flameMesh);
+
+        // Electric Spark Sphere at TDC
+        const sparkMat = new THREE.MeshBasicMaterial({
+          color: 0xe0f2fe,
+          transparent: true,
+          opacity: 0.0
+        });
+        const sparkMesh = new THREE.Mesh(sparkGeo, sparkMat);
+        const headDist = CRANK_R + ROD_LEN + 0.52;
+        sparkMesh.position.set(ux * headDist, CRANK_Y + uy * headDist, wz);
+        engineGroup.add(sparkMesh);
+
+        // Exhaust Header Runner Tube from Cylinder Head to Side Collector
+        const exRunner = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.12, 1.35, 10), matExhaustHot);
+        exRunner.position.set(ux * (headDist - 0.35) - bankSign * 0.55, CRANK_Y + uy * (headDist - 0.35) - 0.45, wz);
+        exRunner.rotation.z = bAng + bankSign * 0.65;
+        engineGroup.add(exRunner);
+
+        cylinders.push({
+          cylId,
+          bankSign,
+          bAng,
+          ux,
+          uy,
+          wz,
+          piston,
+          rod,
+          pinMesh,
+          flameMesh,
+          flameMat,
+          sparkMesh,
+          sparkMat,
+          headDist
+        });
+      });
+    }
+
+    // 5. Twin Turbochargers & Exhaust Collectors (Left & Right Front at Z = +3.85)
+    const turboRotors = [];
+    const boostGlowMats = [];
+
+    [1, -1].forEach((bankSign) => {
+      // Side Exhaust Collector Pipe running along bank to front turbo
+      const collector = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.25, 6.6, 14), matExhaustHot);
+      collector.rotation.x = Math.PI / 2;
+      collector.position.set(-bankSign * 2.35, -0.25, 0.45);
+      engineGroup.add(collector);
+
+      // Turbo Assembly Group at Front
+      const tx = -bankSign * 1.95;
+      const ty = -0.12;
+      const tz = 3.85;
+
+      // Hot-side exhaust turbine housing
+      const turbineHousing = new THREE.Mesh(new THREE.CylinderGeometry(0.68, 0.68, 0.42, 24), matExhaustHot);
+      turbineHousing.rotation.x = Math.PI / 2;
+      turbineHousing.position.set(tx, ty, tz - 0.24);
+      engineGroup.add(turbineHousing);
+
+      // Cold-side aluminum compressor snail housing
+      const compHousing = new THREE.Mesh(new THREE.CylinderGeometry(0.76, 0.72, 0.44, 24), matCompressor);
+      compHousing.rotation.x = Math.PI / 2;
+      compHousing.position.set(tx, ty, tz + 0.22);
+      engineGroup.add(compHousing);
+
+      // Spinning Billet Impeller Rotor Group
+      const rotorGroup = new THREE.Group();
+      rotorGroup.position.set(tx, ty, tz + 0.46);
+      const hub = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.28, 12), matCrankSteel);
+      hub.rotation.x = Math.PI / 2;
+      rotorGroup.add(hub);
+
+      for (let b = 0; b < 8; b++) {
+        const blade = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.08, 0.04), matCompressor);
+        blade.rotation.z = (b * Math.PI) / 4;
+        blade.rotation.y = 0.35;
+        rotorGroup.add(blade);
+      }
+      engineGroup.add(rotorGroup);
+      turboRotors.push({ rotorGroup, bankSign });
+
+      // Compressor Boost Halo Ring
+      const glowMat = new THREE.MeshBasicMaterial({
+        color: 0x38bdf8,
+        transparent: true,
+        opacity: 0.15,
+        side: THREE.DoubleSide
+      });
+      const glowRing = new THREE.Mesh(new THREE.RingGeometry(0.48, 0.68, 24), glowMat);
+      glowRing.position.set(tx, ty, tz + 0.47);
+      engineGroup.add(glowRing);
+      boostGlowMats.push(glowMat);
+
+      // Charge Pipe routing compressed air from Turbo up to Intake Plenum
+      const chargePipe = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 2.35, 12), matChargePipe);
+      chargePipe.position.set(tx * 0.72, 0.88, tz - 0.45);
+      chargePipe.rotation.z = bankSign * 0.48;
+      chargePipe.rotation.x = -0.35;
+      engineGroup.add(chargePipe);
+    });
+
+    // Airflow & Exhaust Particle Stream (120 particles)
+    const PARTICLE_COUNT = 120;
+    const particleGeo = new THREE.BufferGeometry();
+    const particlePos = new Float32Array(PARTICLE_COUNT * 3);
+    const particleColors = new Float32Array(PARTICLE_COUNT * 3);
+    const particleMeta = [];
+
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      const isIntake = i < 60;
+      const bankSign = i % 2 === 0 ? 1 : -1;
+      particleMeta.push({
+        isIntake,
+        bankSign,
+        progress: Math.random()
+      });
+      particlePos[i * 3] = 0;
+      particlePos[i * 3 + 1] = 0;
+      particlePos[i * 3 + 2] = 0;
+      if (isIntake) {
+        particleColors[i * 3] = 0.22;
+        particleColors[i * 3 + 1] = 0.75;
+        particleColors[i * 3 + 2] = 0.98;
+      } else {
+        particleColors[i * 3] = 1.0;
+        particleColors[i * 3 + 1] = 0.38;
+        particleColors[i * 3 + 2] = 0.08;
+      }
+    }
+    particleGeo.setAttribute('position', new THREE.BufferAttribute(particlePos, 3));
+    particleGeo.setAttribute('color', new THREE.BufferAttribute(particleColors, 3));
+    const particleMat = new THREE.PointsMaterial({
+      size: 0.16,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.85
+    });
+    const particleSystem = new THREE.Points(particleGeo, particleMat);
+    engineGroup.add(particleSystem);
+
+    // =========================================================================
+    // 3. WEB AUDIO API SYNTHESIZER (STARTER, V12 EXHAUST, TURBO SPOOL, BOV)
+    // =========================================================================
+    let audioCtx = null;
+    let v12Osc1 = null;
+    let v12Osc2 = null;
+    let v12Gain = null;
+    let turboOsc = null;
+    let turboGain = null;
+    let starterOsc = null;
+    let starterGain = null;
+
+    function initOrToggleAudio() {
+      const btn = document.getElementById('btnAudio');
+      if (!audioCtx) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContextClass();
+
+        // V12 Primary & Harmonic Oscillators
+        v12Osc1 = audioCtx.createOscillator();
+        v12Osc2 = audioCtx.createOscillator();
+        v12Osc1.type = 'sawtooth';
+        v12Osc2.type = 'triangle';
+
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.value = 680;
+
+        v12Gain = audioCtx.createGain();
+        v12Gain.gain.value = 0.0;
+
+        v12Osc1.connect(filter);
+        v12Osc2.connect(filter);
+        filter.connect(v12Gain);
+        v12Gain.connect(audioCtx.destination);
+
+        // Twin-Turbo Whistle Oscillator
+        turboOsc = audioCtx.createOscillator();
+        turboOsc.type = 'sine';
+        turboGain = audioCtx.createGain();
+        turboGain.gain.value = 0.0;
+        turboOsc.connect(turboGain);
+        turboGain.connect(audioCtx.destination);
+
+        // Starter Cranking Motor Oscillator
+        starterOsc = audioCtx.createOscillator();
+        starterOsc.type = 'square';
+        starterGain = audioCtx.createGain();
+        starterGain.gain.value = 0.0;
+        starterOsc.connect(starterGain);
+        starterGain.connect(audioCtx.destination);
+
+        v12Osc1.start();
+        v12Osc2.start();
+        turboOsc.start();
+        starterOsc.start();
+
+        state.audioEnabled = true;
+      } else {
+        state.audioEnabled = !state.audioEnabled;
+        if (audioCtx.state === 'suspended' && state.audioEnabled) {
+          audioCtx.resume();
+        }
+      }
+
+      if (state.audioEnabled) {
+        btn.textContent = '🔊 Sound: ON (V12 + Twin-Turbo)';
+        btn.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600/30 border border-emerald-500/50 text-emerald-200 transition';
+      } else {
+        btn.textContent = '🔇 Sound: Muted';
+        btn.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition';
+        if (v12Gain) v12Gain.gain.setTargetAtTime(0.0, audioCtx.currentTime, 0.05);
+        if (turboGain) turboGain.gain.setTargetAtTime(0.0, audioCtx.currentTime, 0.05);
+        if (starterGain) starterGain.gain.setTargetAtTime(0.0, audioCtx.currentTime, 0.05);
+      }
+    }
+
+    function updateSynthesizedAudio() {
+      if (!audioCtx || !state.audioEnabled) return;
+      const now = audioCtx.currentTime;
+      const f0 = Math.max(18, (state.rpm / 60.0) * 6.0); // 6th order V12 fundamental
+
+      v12Osc1.frequency.setTargetAtTime(f0 * 0.5, now, 0.03);
+      v12Osc2.frequency.setTargetAtTime(f0, now, 0.03);
+
+      const combVol = state.ignitionOn ? Math.min(0.16, 0.04 + (state.rpm / 8500.0) * 0.12) : 0.0;
+      v12Gain.gain.setTargetAtTime(combVol, now, 0.04);
+
+      // Turbo compressor whistle (2.2 kHz - 5.8 kHz)
+      const boostNorm = Math.max(0, state.boostBar / 1.65);
+      turboOsc.frequency.setTargetAtTime(2100 + boostNorm * 3600, now, 0.04);
+      turboGain.gain.setTargetAtTime(boostNorm * 0.035, now, 0.04);
+
+      // Starter cadence
+      if (state.cranking) {
+        const mod = 140 + 35 * Math.sin(now * 26.0);
+        starterOsc.frequency.setTargetAtTime(mod, now, 0.02);
+        starterGain.gain.setTargetAtTime(0.045, now, 0.03);
+      } else {
+        starterGain.gain.setTargetAtTime(0.0, now, 0.03);
+      }
+    }
+
+    // =========================================================================
+    // 4. TELEMETRY & AUTO-DIRECTOR SEQUENCE EVALUATION
+    // =========================================================================
+    function evaluateTourTelemetry(t) {
+      let phase = '';
+      let stageTag = '';
+      if (t < 1.2) {
+        phase = 'PHASE 1/5: FUEL RAIL PRIME & ECU DIAGNOSTIC';
+        stageTag = 'PRE-IGNITION';
+        state.rpm = 0;
+        state.boostBar = 0.0;
+        state.egt = 28;
+        state.ignitionOn = false;
+        state.cranking = false;
+      } else if (t < 3.2) {
+        phase = 'PHASE 2/5: STARTER MOTOR CRANKING (280 RPM)';
+        stageTag = 'STARTER CRANKING';
+        const dt = t - 1.2;
+        state.rpm = 280 * Math.min(1, dt / 0.4) + 30 * Math.sin(dt * 26);
+        state.boostBar = 0.0;
+        state.egt = 35 + dt * 55;
+        state.cranking = true;
+        state.ignitionOn = dt > 1.1; // Spark catches midway through cranking
+      } else if (t < 5.2) {
+        phase = 'PHASE 3/5: V12 IGNITION BARK & COLD START IDLE (1,100 RPM)';
+        stageTag = 'IGNITION BARK';
+        const dt = t - 3.2;
+        if (dt < 0.45) {
+          state.rpm = 280 + (2650 - 280) * (dt / 0.45);
+        } else {
+          state.rpm = 1100 + (2650 - 1100) * Math.exp(-(dt - 0.45) * 2.2) + 22 * Math.sin(t * 17);
+        }
+        state.boostBar = 0.08 * Math.exp(-Math.max(0, dt - 0.3));
+        state.egt = 150 + 260 * (1 - Math.exp(-dt * 1.4));
+        state.cranking = false;
+        state.ignitionOn = true;
+      } else if (t < 10.6) {
+        phase = 'PHASE 4/5: WIDE-OPEN THROTTLE — TWIN-TURBO FULL BOOST (+1.65 BAR)';
+        stageTag = 'FULL BOOST PULL';
+        const dt = t - 5.2;
+        const prog = 1 / (1 + Math.exp(-1.4 * (dt - 2.2)));
+        state.rpm = 1100 + 7150 * prog + 35 * Math.sin(t * 32);
+        state.boostBar = 1.65 * Math.pow(prog, 1.15);
+        state.egt = 410 + 530 * prog;
+        state.cranking = false;
+        state.ignitionOn = true;
+      } else {
+        phase = 'PHASE 5/5: THROTTLE LIFT, BLOW-OFF VALVE & IDLE COOLDOWN';
+        stageTag = 'BOV & COOLDOWN';
+        const dt = t - 10.6;
+        state.rpm = 1150 + (8200 - 1150) * Math.exp(-dt * 1.35) + 18 * Math.sin(t * 14);
+        state.boostBar = Math.max(-0.18, 1.65 * Math.exp(-dt * 4.2) - 0.15);
+        state.egt = 510 + 430 * Math.exp(-dt * 0.75);
+        state.cranking = false;
+        state.ignitionOn = true;
+      }
+
+      document.getElementById('phaseBanner').textContent = phase;
+      document.getElementById('stageTag').textContent = stageTag;
+      document.getElementById('timelineSlider').value = t.toFixed(2);
+      document.getElementById('timelineLabel').textContent = `${t.toFixed(1).padStart(4, '0')}s / 14.0s`;
+    }
+
+    // =========================================================================
+    // 5. UI CONTROLS & EVENT LISTENERS
+    // =========================================================================
+    const btnAutoTour = document.getElementById('btnAutoTour');
+    const btnIgnition = document.getElementById('btnIgnition');
+    const btnRevThrottle = document.getElementById('btnRevThrottle');
+    const btnAudio = document.getElementById('btnAudio');
+    const btnXray = document.getElementById('btnXray');
+    const btnSlowMo = document.getElementById('btnSlowMo');
+    const rpmSlider = document.getElementById('rpmSlider');
+    const timelineSlider = document.getElementById('timelineSlider');
+
+    function setAutoTour(enabled) {
+      state.autoTour = enabled;
+      if (enabled) {
+        btnAutoTour.textContent = '🎬 Auto Video Tour: ON';
+        btnAutoTour.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500 text-slate-950 hover:bg-amber-400 transition shadow';
+        document.getElementById('sliderRpmLabel').textContent = 'Auto Sequence';
+      } else {
+        btnAutoTour.textContent = '🎬 Auto Video Tour: OFF (Manual)';
+        btnAutoTour.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-200 hover:bg-slate-700 border border-slate-700 transition';
+        document.getElementById('sliderRpmLabel').textContent = `${Math.round(state.targetRpm)} RPM`;
+      }
+    }
+
+    btnAutoTour.addEventListener('click', () => {
+      setAutoTour(!state.autoTour);
+    });
+
+    btnIgnition.addEventListener('click', () => {
+      setAutoTour(true);
+      state.tourTime = 1.15; // Jump right to Starter Cranking -> Ignition Bark
+    });
+
+    // Hold-to-Rev WOT Button (Mouse & Touch)
+    function startWot() {
+      setAutoTour(false);
+      state.holdingWot = true;
+      state.ignitionOn = true;
+      state.cranking = false;
+      state.targetRpm = 8350;
+      rpmSlider.value = 8350;
+      document.getElementById('sliderRpmLabel').textContent = '8350 RPM (WOT)';
+    }
+    function stopWot() {
+      if (state.holdingWot) {
+        state.holdingWot = false;
+        state.targetRpm = 1150;
+        rpmSlider.value = 1150;
+        document.getElementById('sliderRpmLabel').textContent = '1150 RPM (IDLE)';
+      }
+    }
+    btnRevThrottle.addEventListener('mousedown', startWot);
+    btnRevThrottle.addEventListener('touchstart', (e) => { e.preventDefault(); startWot(); });
+    window.addEventListener('mouseup', stopWot);
+    window.addEventListener('touchend', stopWot);
+
+    btnAudio.addEventListener('click', initOrToggleAudio);
+
+    rpmSlider.addEventListener('input', (e) => {
+      setAutoTour(false);
+      const val = parseFloat(e.target.value);
+      state.targetRpm = val;
+      if (val < 100) {
+        state.ignitionOn = false;
+        state.cranking = false;
+        document.getElementById('sliderRpmLabel').textContent = '0 RPM (OFF)';
+      } else if (val <= 450) {
+        state.cranking = true;
+        state.ignitionOn = false;
+        document.getElementById('sliderRpmLabel').textContent = `${val} RPM (CRANKING)`;
+      } else {
+        state.cranking = false;
+        state.ignitionOn = true;
+        document.getElementById('sliderRpmLabel').textContent = `${val} RPM`;
+      }
+    });
+
+    timelineSlider.addEventListener('input', (e) => {
+      state.tourTime = parseFloat(e.target.value);
+      evaluateTourTelemetry(state.tourTime);
+    });
+
+    btnXray.addEventListener('click', () => {
+      state.xray = !state.xray;
+      matBlockXray.opacity = state.xray ? 0.28 : 0.92;
+      btnXray.textContent = state.xray ? '🔍 X-Ray Block: ON' : '🔍 X-Ray Block: OFF';
+    });
+
+    const speedSteps = [1.0, 0.25, 0.08];
+    let speedIdx = 0;
+    btnSlowMo.addEventListener('click', () => {
+      speedIdx = (speedIdx + 1) % speedSteps.length;
+      state.simSpeed = speedSteps[speedIdx];
+      btnSlowMo.textContent = `⏱️ Speed: ${state.simSpeed}x`;
+    });
+
+    // Camera Preset Buttons
+    function setCamMode(mode, yaw, pitch, dist) {
+      state.camMode = mode;
+      if (yaw !== undefined) state.camYaw = yaw;
+      if (pitch !== undefined) state.camPitch = pitch;
+      if (dist !== undefined) state.camDist = dist;
+
+      const ids = ['camOrbit', 'camFront', 'camSide', 'camTop'];
+      ids.forEach((id) => {
+        const el = document.getElementById(id);
+        const active = (id === 'camOrbit' && mode === 'orbit') ||
+                       (id === 'camFront' && mode === 'front') ||
+                       (id === 'camSide' && mode === 'side') ||
+                       (id === 'camTop' && mode === 'top');
+        el.className = active
+          ? 'px-2.5 py-1 rounded text-xs font-medium bg-orange-600 text-white transition'
+          : 'px-2.5 py-1 rounded text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 transition';
+      });
+    }
+
+    document.getElementById('camOrbit').addEventListener('click', () => setCamMode('orbit', -0.5, 0.32, 13.5));
+    document.getElementById('camFront').addEventListener('click', () => setCamMode('front', 0.0, 0.18, 11.2));
+    document.getElementById('camSide').addEventListener('click', () => setCamMode('side', -1.25, 0.16, 12.8));
+    document.getElementById('camTop').addEventListener('click', () => setCamMode('top', 0.0, 1.15, 13.8));
+
+    // Interactive Pointer Drag Orbit & Wheel Zoom on 3D Viewport
+    let isDragging = false;
+    let prevX = 0;
+    let prevY = 0;
+    container.addEventListener('pointerdown', (e) => {
+      isDragging = true;
+      prevX = e.clientX;
+      prevY = e.clientY;
+      setCamMode('manual');
+    });
+    window.addEventListener('pointermove', (e) => {
+      if (!isDragging) return;
+      const dx = e.clientX - prevX;
+      const dy = e.clientY - prevY;
+      prevX = e.clientX;
+      prevY = e.clientY;
+      state.camYaw -= dx * 0.007;
+      state.camPitch = Math.max(-0.35, Math.min(1.4, state.camPitch + dy * 0.007));
+    });
+    window.addEventListener('pointerup', () => {
+      isDragging = false;
+    });
+    container.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      state.camDist = Math.max(7.5, Math.min(22.0, state.camDist + e.deltaY * 0.008));
+    }, { passive: false });
+
+    // Resize Handler
+    function handleResize() {
+      const w = container.clientWidth || 800;
+      const h = container.clientHeight || 500;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h, false);
+    }
+    window.addEventListener('resize', handleResize);
+    handleResize();
+
+    // =========================================================================
+    // 6. MAIN REAL-TIME 3D KINEMATIC & RENDERING LOOP
+    // =========================================================================
+    let lastTime = performance.now();
+    let frameCount = 0;
+    let fpsTimer = performance.now();
+
+    function animate(now) {
+      requestAnimationFrame(animate);
+
+      const rawDt = Math.min(0.05, (now - lastTime) / 1000.0);
+      lastTime = now;
+      const dt = rawDt * state.simSpeed;
+
+      // FPS counter
+      frameCount++;
+      if (now - fpsTimer >= 500) {
+        const fps = Math.round((frameCount * 1000) / (now - fpsTimer));
+        document.getElementById('fpsCounter').textContent = `${fps} FPS`;
+        frameCount = 0;
+        fpsTimer = now;
+      }
+
+      // 1. Update Telemetry (Auto Video Tour vs Manual Mode)
+      if (state.autoTour) {
+        state.tourTime = (state.tourTime + dt) % state.tourDuration;
+        evaluateTourTelemetry(state.tourTime);
+      } else {
+        // Smoothly approach manual target RPM
+        state.rpm += (state.targetRpm - state.rpm) * Math.min(1.0, rawDt * 4.5);
+        const rpmNorm = Math.max(0, (state.rpm - 1100) / 7400);
+        const targetBoost = state.ignitionOn ? 1.65 * Math.pow(rpmNorm, 1.25) : 0.0;
+        state.boostBar += (targetBoost - state.boostBar) * Math.min(1.0, rawDt * 3.8);
+        const targetEgt = state.ignitionOn ? 320 + 620 * rpmNorm : 28;
+        state.egt += (targetEgt - state.egt) * Math.min(1.0, rawDt * 2.0);
+        document.getElementById('phaseBanner').textContent = state.ignitionOn
+          ? `MANUAL CONTROL — ${Math.round(state.rpm)} RPM | ${state.boostBar >= 0 ? '+' : ''}${state.boostBar.toFixed(2)} BAR BOOST`
+          : (state.cranking ? 'MANUAL CONTROL — STARTER CRANKING' : 'ENGINE STANDBY (OFF)');
+      }
+
+      // 2. Advance Crankshaft & Twin-Turbo Angles
+      // Visual angular step capped so 4-stroke motion remains crisp and readable at 60fps
+      const realDegPerSec = (state.rpm / 60.0) * 360.0;
+      const visualDegStep = Math.min(28.0 * state.simSpeed, realDegPerSec * dt * 0.35);
+      state.crankDeg = (state.crankDeg + visualDegStep) % 720.0;
+      mainShaft.rotation.z = THREE.MathUtils.degToRad(state.crankDeg);
+      flywheel.rotation.z = THREE.MathUtils.degToRad(state.crankDeg);
+
+      const turboSpinStep = (0.12 + Math.max(0, state.boostBar) * 0.65) * state.simSpeed;
+      state.turboAngle += turboSpinStep;
+      turboRotors.forEach(({ rotorGroup, bankSign }) => {
+        rotorGroup.rotation.z = state.turboAngle * bankSign;
+      });
+
+      // 3. Update Thermal Glow on Exhaust Headers & Starter Motor
+      const heatNorm = Math.max(0, Math.min(1, (state.egt - 320) / 600));
+      matExhaustHot.emissive.setRGB(heatNorm * 0.95, Math.pow(heatNorm, 1.6) * 0.28, 0.02);
+      matExhaustHot.emissiveIntensity = heatNorm * 1.35;
+
+      matStarter.emissiveIntensity = state.cranking ? (0.6 + 0.4 * Math.sin(now * 0.02)) : 0.0;
+
+      boostGlowMats.forEach((gm) => {
+        gm.opacity = 0.1 + 0.65 * Math.max(0, state.boostBar / 1.65);
+      });
+
+      // 4. Update All 12 Cylinders (Pistons, Connecting Rods, Combustion Flashes, UI Matrix)
+      cylinders.forEach((cyl) => {
+        const cycleDeg = (state.crankDeg - FIRE_OFFSET[cyl.cylId] + 720.0) % 720.0;
+        const theta = THREE.MathUtils.degToRad(cycleDeg);
+
+        // Crankpin position in world space
+        const pinAng = cyl.bAng - theta;
+        const px = -Math.sin(pinAng) * CRANK_R;
+        const py = CRANK_Y + Math.cos(pinAng) * CRANK_R;
+        cyl.pinMesh.position.set(px, py, cyl.wz);
+
+        // Exact slider-crank kinematic equation for piston wrist pin distance s along bank bore
+        const sinT = Math.sin(theta);
+        const cosT = Math.cos(theta);
+        const sDist = CRANK_R * cosT + Math.sqrt(Math.max(0.01, ROD_LEN * ROD_LEN - CRANK_R * CRANK_R * sinT * sinT));
+
+        const wx = cyl.ux * sDist;
+        const wy = CRANK_Y + cyl.uy * sDist;
+        cyl.piston.position.set(wx + cyl.ux * 0.15, wy + cyl.uy * 0.15, cyl.wz);
+
+        // Connecting rod midpoint and angle between crankpin (px, py) and wrist pin (wx, wy)
+        cyl.rod.position.set((px + wx) * 0.5, (py + wy) * 0.5, cyl.wz);
+        const dx = wx - px;
+        const dy = wy - py;
+        cyl.rod.rotation.z = Math.atan2(dy, dx) - Math.PI / 2;
+
+        // Combustion chamber volume center between piston crown and cylinder head
+        const crownDist = sDist + 0.36;
+        const midDist = (crownDist + cyl.headDist) * 0.5;
+        const chHeight = Math.max(0.08, cyl.headDist - crownDist);
+        cyl.flameMesh.position.set(cyl.ux * midDist, CRANK_Y + cyl.uy * midDist, cyl.wz);
+        cyl.flameMesh.scale.set(1, chHeight / 0.44, 1);
+
+        // 4-Stroke Lighting & UI Badge Update
+        const ui = cylCards[cyl.cylId];
+        if (!state.ignitionOn && !state.cranking) {
+          cyl.flameMat.opacity = 0.0;
+          cyl.sparkMat.opacity = 0.0;
+          if (ui.badge.textContent !== 'OFF') {
+            ui.badge.textContent = 'OFF';
+            ui.badge.className = 'text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-800 text-slate-400';
+          }
+        } else if (cycleDeg < 180.0) {
+          // POWER / IGNITION STROKE
+          if (state.ignitionOn) {
+            const pNorm = Math.max(0, 1.0 - cycleDeg / 145.0);
+            cyl.flameMat.color.setHex(cycleDeg < 22.0 ? 0xe0f2fe : 0xff5500);
+            cyl.flameMat.opacity = 0.82 * pNorm;
+            cyl.sparkMat.opacity = cycleDeg < 28.0 ? 1.0 : 0.0;
+            ui.badge.textContent = '⚡ SPARK/PWR';
+            ui.badge.className = 'text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-500/30 text-red-300 border border-red-500/40';
+          } else {
+            cyl.flameMat.opacity = 0.0;
+            cyl.sparkMat.opacity = cycleDeg < 20.0 ? 0.6 : 0.0;
+            ui.badge.textContent = 'CRANKING';
+            ui.badge.className = 'text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300';
+          }
+        } else if (cycleDeg < 360.0) {
+          // EXHAUST STROKE
+          cyl.flameMat.color.setHex(0x9333ea);
+          cyl.flameMat.opacity = 0.25;
+          cyl.sparkMat.opacity = 0.0;
+          ui.badge.textContent = 'EXHAUST';
+          ui.badge.className = 'text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300';
+        } else if (cycleDeg < 540.0) {
+          // INTAKE STROKE
+          cyl.flameMat.color.setHex(0x38bdf8);
+          cyl.flameMat.opacity = 0.35 + 0.25 * Math.max(0, state.boostBar / 1.65);
+          cyl.sparkMat.opacity = 0.0;
+          ui.badge.textContent = 'INTAKE';
+          ui.badge.className = 'text-[10px] font-bold px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300';
+        } else {
+          // COMPRESSION STROKE
+          cyl.flameMat.color.setHex(0xfbbf24);
+          cyl.flameMat.opacity = 0.38;
+          cyl.sparkMat.opacity = 0.0;
+          ui.badge.textContent = 'COMPRESS';
+          ui.badge.className = 'text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300';
+        }
+      });
+
+      // 5. Animate Intake Boost & Exhaust Gas Flow Particles
+      const posAttr = particleGeo.getAttribute('position');
+      const flowSpeed = (0.25 + (state.rpm / 8500.0) * 1.6) * dt;
+      for (let i = 0; i < PARTICLE_COUNT; i++) {
+        const meta = particleMeta[i];
+        meta.progress = (meta.progress + flowSpeed) % 1.0;
+        const p = meta.progress;
+        if (meta.isIntake) {
+          // Flow from Front Turbo (+Z=4.2) up charge pipe to Top Plenum and along Z (-2.8..+2.8)
+          const px = -meta.bankSign * (1.95 * (1 - p) + 0.55 * p);
+          const py = -0.1 + 2.1 * Math.sin(p * Math.PI * 0.65);
+          const pz = 4.1 - p * 6.8;
+          posAttr.setXYZ(i, px, py, pz);
+        } else {
+          // Exhaust flow along outer collector (-2.6..+3.8) into Front Turbines
+          const px = -meta.bankSign * 2.25;
+          const py = -0.25;
+          const pz = -2.6 + p * 6.45;
+          posAttr.setXYZ(i, px, py, pz);
+        }
+      }
+      posAttr.needsUpdate = true;
+
+      // 6. Camera Positioning
+      if (state.camMode === 'orbit') {
+        state.camYaw += rawDt * 0.28;
+      }
+      const cx = Math.sin(state.camYaw) * Math.cos(state.camPitch) * state.camDist;
+      const cy = Math.sin(state.camPitch) * state.camDist + 0.15;
+      const cz = Math.cos(state.camYaw) * Math.cos(state.camPitch) * state.camDist;
+      camera.position.set(cx, cy, cz);
+      camera.lookAt(0, 0.05, 0.2);
+
+      // 7. Update HUD Gauges & Synthesized Audio
+      const rpmInt = Math.round(state.rpm);
+      document.getElementById('hudRpm').textContent = rpmInt;
+      document.getElementById('hudBoost').textContent = `${state.boostBar >= 0 ? '+' : ''}${state.boostBar.toFixed(2)}`;
+
+      const turboRpm = state.ignitionOn ? Math.round(18000 + Math.max(0, state.boostBar / 1.65) * 127000) : (state.cranking ? 2400 : 0);
+      document.getElementById('gaugeTurboRpm').textContent = turboRpm.toLocaleString();
+      document.getElementById('barTurbo').style.width = `${Math.min(100, (turboRpm / 145000) * 100)}%`;
+
+      document.getElementById('gaugeEgt').textContent = Math.round(state.egt);
+      document.getElementById('barEgt').style.width = `${Math.min(100, (state.egt / 980) * 100)}%`;
+
+      let hp = 0;
+      let nm = 0;
+      if (state.ignitionOn && state.rpm > 600) {
+        const boostMult = 1.0 + Math.max(0, state.boostBar) * 0.55;
+        const tCurve = Math.sin(Math.min(1.0, (state.rpm - 500) / 8500) * Math.PI * 0.85);
+        nm = Math.round(520 * tCurve * boostMult);
+        hp = Math.round((nm * state.rpm) / 7127);
+      }
+      document.getElementById('gaugeHp').textContent = hp;
+      document.getElementById('gaugeNm').textContent = nm;
+
+      const stateBadge = document.getElementById('engineStateBadge');
+      if (state.ignitionOn) {
+        stateBadge.textContent = state.boostBar > 0.5 ? 'TWIN-TURBO BOOST' : 'RUNNING';
+        stateBadge.className = 'text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 mono';
+      } else if (state.cranking) {
+        stateBadge.textContent = 'CRANKING';
+        stateBadge.className = 'text-[11px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 mono';
+      } else {
+        stateBadge.textContent = 'STANDBY';
+        stateBadge.className = 'text-[11px] font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-400 mono';
+      }
+
+      updateSynthesizedAudio();
+      renderer.render(scene, camera);
+    }
+
+    window.onload = () => {
+      handleResize();
+      requestAnimationFrame(animate);
+    };
+  </script>
+</body>
+</html>
